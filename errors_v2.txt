@@ -1,0 +1,1 @@
+﻿src/components/Sidebar.tsx(7,3): error TS6133: 'User' is declared but its value is never read.
