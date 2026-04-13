@@ -16,29 +16,47 @@ import { motion } from 'framer-motion';
 const Sidebar = ({ isMobile, isOpen, onClose }: any) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const isAdminPath = location.pathname.startsWith('/admin');
   const userRole = localStorage.getItem('userRole');
 
   const handleLogout = () => {
     localStorage.clear();
     navigate('/login');
   };
-
-  const menuItems = [
-    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/dashboard' },
-    { id: 'aptitude', label: 'Aptitude Tests', icon: Calculator, path: '/aptitude' },
-    { id: 'interview', label: 'AI Interviews', icon: Mic2, path: '/interview' },
-    { id: 'resume', label: 'Resume Builder', icon: FileText, path: '/resume' },
-    { id: 'subscription', label: 'Subscription', icon: Crown, path: '/pricing' },
-  ];
-
-  if (userRole === 'admin') {
-    menuItems.unshift({ id: 'admin', label: 'Admin Panel', icon: ShieldCheck, path: '/admin' });
+  
+  let menuItems = [];
+  
+  if (isAdminPath) {
+    menuItems = [
+      { id: 'admin', label: 'Console Home', icon: ShieldCheck, path: '/admin' },
+      { id: 'users', label: 'Manage Users', icon: LayoutDashboard, path: '/admin?tab=users' },
+      { id: 'questions', label: 'Question Bank', icon: Calculator, path: '/admin?tab=questions' },
+      { id: 'resumes', label: 'Resume Templates', icon: FileText, path: '/admin?tab=resumes' },
+    ];
+  } else {
+    menuItems = [
+      { id: 'dashboard', label: 'Overview', icon: LayoutDashboard, path: '/dashboard' },
+      { id: 'aptitude', label: 'Aptitude Tests', icon: Calculator, path: '/aptitude' },
+      { id: 'interview', label: 'AI Interviews', icon: Mic2, path: '/interview' },
+      { id: 'resume', label: 'Resume Builder', icon: FileText, path: '/resume' },
+      { id: 'subscription', label: 'Subscription', icon: Crown, path: '/pricing' },
+    ];
   }
 
   const bottomItems = [
     { label: 'Settings', icon: Settings, path: '/settings' },
     { label: 'Help Center', icon: HelpCircle, path: '/help' },
   ];
+
+  // If admin is on user dashboard, show a subtle way to go back to admin panel
+  if (!isAdminPath && userRole === 'admin') {
+    bottomItems.unshift({ label: 'Admin Console', icon: ShieldCheck, path: '/admin' });
+  }
+  
+  // If admin is on admin panel, show a way to go to user dashboard
+  if (isAdminPath) {
+    bottomItems.unshift({ label: 'User Dashboard', icon: LayoutDashboard, path: '/dashboard' });
+  }
 
   const content = (
     <div className="flex flex-col h-full bg-white border-r border-slate-200">

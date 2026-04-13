@@ -15,11 +15,11 @@ const Login = () => {
     if (!email || !password) return toast.error("Please fill in all fields");
     
     // Admin credentials Check
-    if (email === "akashbirsone@gmail.com" && password === "2324000721") {
+    if (email === "akashbirsone80@gmail.com" && password === "2324000721") {
       localStorage.setItem('isLoggedIn', 'true');
       localStorage.setItem('userRole', 'admin');
-      localStorage.setItem('userName', 'Admin');
-      toast.success("Welcome back, Admin!");
+      localStorage.setItem('userName', 'Akash Birsone');
+      toast.success("Welcome back, Akash!");
       navigate('/admin');
     } else {
       // Regular user login simulation

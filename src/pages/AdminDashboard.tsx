@@ -47,6 +47,14 @@ const AdminDashboard = () => {
   });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && ['analytics', 'questions', 'users', 'resumes', 'coupons'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [window.location.search]);
+
+  useEffect(() => {
     // Load questions from localStorage or use defaults
     const saved = localStorage.getItem('aptitude_questions');
     if (saved) {
@@ -144,7 +152,8 @@ const AdminDashboard = () => {
                 <div className="w-8 h-8 lg:w-10 lg:h-10 bg-primary-600 rounded-lg lg:rounded-xl flex items-center justify-center">
                    <ShieldCheck className="w-5 h-5 lg:w-6 lg:h-6 text-white" />
                 </div>
-                <h2 className="text-lg lg:text-xl font-black text-slate-900 leading-tight">Console</h2>
+                <h2 className="text-lg lg:text-xl font-black text-slate-900 leading-tight">Admin Console</h2>
+                <span className="hidden sm:inline-block px-2 py-0.5 bg-primary-100 text-primary-700 text-[10px] font-black uppercase rounded-md ml-2">Secure</span>
              </div>
           </div>
 
