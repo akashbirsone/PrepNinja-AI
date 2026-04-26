@@ -48,15 +48,7 @@ const Sidebar = ({ isMobile, isOpen, onClose }: any) => {
     { label: 'Help Center', icon: HelpCircle, path: '/help' },
   ];
 
-  // If admin is on user dashboard, show a subtle way to go back to admin panel
-  if (!isAdminPath && userRole === 'admin') {
-    bottomItems.unshift({ label: 'Admin Console', icon: ShieldCheck, path: '/admin' });
-  }
-  
-  // If admin is on admin panel, show a way to go to user dashboard
-  if (isAdminPath) {
-    bottomItems.unshift({ label: 'User Dashboard', icon: LayoutDashboard, path: '/dashboard' });
-  }
+
 
   const content = (
     <div className="flex flex-col h-full bg-white border-r border-slate-200">

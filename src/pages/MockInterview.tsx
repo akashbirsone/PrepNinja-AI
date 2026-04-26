@@ -4,15 +4,15 @@ import {
   Menu, 
   Mic, 
   MicOff, 
-  Send, 
   Clock, 
   Award, 
   AlertCircle,
   TrendingUp,
-  Brain,
   Video,
   RotateCcw,
-  CheckCircle
+  CheckCircle,
+  MessageSquare,
+  PhoneOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -23,80 +23,123 @@ interface Message {
   text: string;
 }
 
+const AI_IMAGE = "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=600&h=600";
+
 const MockInterview = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 1, type: 'ai', text: "Hello! I'm your AI Interviewer. Are you ready to start your mock session for the Software Engineer role?" }
-  ]);
-  const [inputText, setInputText] = useState("");
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const [timeLeft, setTimeLeft] = useState(15 * 60); // 15 mins
   const [showFeedback, setShowFeedback] = useState(false);
+  const [activeSpeaker, setActiveSpeaker] = useState<'ai' | 'user'>('ai');
+  const [showChat, setShowChat] = useState(true);
+  
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const pipVideoRef = useRef<HTMLVideoElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
-  // Web Speech API
-  const recognition = (window as any).webkitSpeechRecognition 
-    ? new (window as any).webkitSpeechRecognition() 
-    : null;
+  // Speech Recognition setup
+  const recognitionRef = useRef<any>(null);
 
-  if (recognition) {
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+  useEffect(() => {
+    if ((window as any).webkitSpeechRecognition) {
+      const recognition = new (window as any).webkitSpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
 
-    recognition.onresult = (event: any) => {
-      const transcript = Array.from(event.results)
-        .map((result: any) => result[0])
-        .map(result => result.transcript)
-        .join('');
-      setInputText(transcript);
-    };
-  }
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        if (transcript.trim()) {
+           handleUserSubmit(transcript);
+        }
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, [messages]); // Include messages dependency so handleUserSubmit gets latest state
 
   const toggleRecording = () => {
-    if (!recognition) return toast.error("Speech recognition not supported in this browser.");
+    if (!recognitionRef.current) return toast.error("Speech recognition not supported in this browser.");
+    
     if (isRecording) {
-      recognition.stop();
+      recognitionRef.current.stop();
+      setIsRecording(false);
     } else {
-      recognition.start();
+      // Stop AI speech if it's talking
+      window.speechSynthesis.cancel();
+      setActiveSpeaker('user');
+      try {
+        recognitionRef.current.start();
+        setIsRecording(true);
+      } catch (e) {
+        console.error(e);
+      }
     }
-    setIsRecording(!isRecording);
   };
 
-  const handleSendMessage = () => {
-    if (!inputText.trim()) return;
-    
-    const newUserMsg: Message = { id: Date.now(), type: 'user', text: inputText };
-    setMessages(prev => [...prev, newUserMsg]);
-    setInputText("");
-    
-    if (isRecording) {
-       recognition.stop();
-       setIsRecording(false);
-    }
-
-    // Simulate AI think and reply
-    setTimeout(() => {
-      const aiReplies = [
-        "That's a very clear explanation. Now, can you tell me about a challenging technical project you worked on?",
-        "Interesting. How do you handle disagreements within a team setting?",
-        "Good. Let's move to some technical basics. Briefly explain the difference between REST and GraphQL.",
-        "Alright. Finally, why do you want to join our company specifically?"
-      ];
+  const speakAI = (text: string) => {
+    setActiveSpeaker('ai');
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const femaleVoice = voices.find(v => v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Google') || v.name.includes('Zira'));
+      if (femaleVoice) utterance.voice = femaleVoice;
       
-      const nextAiMsg: Message = { 
-        id: Date.now() + 1, 
-        type: 'ai', 
-        text: aiReplies[Math.min(messages.filter(m => m.type === 'user').length, aiReplies.length - 1)] 
+      utterance.onend = () => {
+        setActiveSpeaker('user');
       };
-      setMessages(prev => [...prev, nextAiMsg]);
-    }, 1500);
+      window.speechSynthesis.speak(utterance);
+    } else {
+      setTimeout(() => {
+        setActiveSpeaker('user');
+      }, text.length * 60);
+    }
+  };
+
+  const handleUserSubmit = (transcript: string) => {
+    const newUserMsg: Message = { id: Date.now(), type: 'user', text: transcript };
+    
+    // We must use functional state update to ensure we have the latest messages array
+    setMessages(prev => {
+       const newMessages = [...prev, newUserMsg];
+       
+       // Trigger AI reply after a short delay
+       setTimeout(() => {
+          const aiReplies = [
+            "That's a great point. Can you elaborate on a challenging technical project you worked on recently?",
+            "Interesting approach. How do you usually handle disagreements within a team setting?",
+            "I understand. Let's shift to some technical concepts. Briefly explain the difference between REST and GraphQL.",
+            "Alright. Finally, why do you want to join our company specifically?"
+          ];
+          
+          const userMessageCount = newMessages.filter(m => m.type === 'user').length;
+          const nextAiText = aiReplies[Math.min(userMessageCount - 1, aiReplies.length - 1)];
+          
+          const nextAiMsg: Message = { id: Date.now() + 1, type: 'ai', text: nextAiText };
+          setMessages(currentMessages => [...currentMessages, nextAiMsg]);
+          speakAI(nextAiText);
+       }, 1000);
+
+       return newMessages;
+    });
+
+    setIsRecording(false);
+    setActiveSpeaker('ai');
   };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (isInterviewActive && showChat) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isInterviewActive, showChat]);
 
   useEffect(() => {
     let timer: any;
@@ -108,9 +151,58 @@ const MockInterview = () => {
     return () => clearInterval(timer);
   }, [isInterviewActive, timeLeft]);
 
+  // Camera effect
+  useEffect(() => {
+    const startCamera = async () => {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        setStream(mediaStream);
+      } catch (err) {
+        console.error("Error accessing camera:", err);
+        toast.error("Could not access camera. Please allow camera permissions.");
+      }
+    };
+
+    if (isInterviewActive) {
+      startCamera();
+      
+      // Start initial AI greeting
+      const greeting = "Hello! I'm Sarah, your AI Interviewer. Are you ready to start your mock session for the Software Engineer role?";
+      setMessages([{ id: 1, type: 'ai', text: greeting }]);
+      setTimeout(() => {
+        speakAI(greeting);
+      }, 500);
+
+    } else {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+      window.speechSynthesis.cancel();
+      if (recognitionRef.current && isRecording) {
+         recognitionRef.current.stop();
+         setIsRecording(false);
+      }
+    }
+    
+    return () => {
+       window.speechSynthesis.cancel();
+    }
+  }, [isInterviewActive]);
+
+  // Sync streams to video elements
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+    if (pipVideoRef.current && stream) {
+      pipVideoRef.current.srcObject = stream;
+    }
+  }, [stream, activeSpeaker]);
+
   const startInterview = () => {
     setIsInterviewActive(true);
-    toast.success("Interview Started!");
+    toast.success("Interview Connected!");
   };
 
   const endInterview = () => {
@@ -127,98 +219,185 @@ const MockInterview = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
-      <Sidebar isMobile={false} />
-      <Sidebar isMobile={true} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+      {/* Hide sidebar when interview is active for full call experience */}
+      {!isInterviewActive && <Sidebar isMobile={false} />}
+      {!isInterviewActive && <Sidebar isMobile={true} isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />}
 
-      <main className="flex-1 min-w-0 flex flex-col relative">
-        {/* Header */}
-        <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 shrink-0 z-10">
-          <div className="flex items-center space-x-4">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 hover:bg-slate-100 rounded-xl">
-              <Menu className="w-6 h-6 text-slate-600" />
-            </button>
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center">
-                 <Video className="w-5 h-5 text-primary-600" />
+      <main className="flex-1 min-w-0 flex flex-col relative h-full">
+        {isInterviewActive ? (
+          <div className="relative flex-1 bg-slate-900 overflow-hidden flex flex-col">
+            
+            {/* Top Header Controls (Transparent) */}
+            <div className="absolute top-0 left-0 right-0 z-50 p-6 lg:p-8 flex items-center justify-between pointer-events-none">
+              <div className="flex items-center space-x-3 pointer-events-auto">
+                 <div className="px-4 py-2 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 flex items-center space-x-2">
+                    <div className={`w-2 h-2 rounded-full ${activeSpeaker === 'ai' ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
+                    <span className="text-white font-medium text-sm">Sarah (AI)</span>
+                 </div>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 leading-none">AI Mock Session</h2>
-                <p className="text-[11px] font-bold text-green-600 uppercase mt-1 tracking-wider">Live Analysis Active</p>
+
+              <div className="px-5 py-2 bg-black/50 backdrop-blur-md border border-white/10 text-white rounded-2xl font-black tabular-nums flex items-center space-x-2 pointer-events-auto shadow-lg">
+                <Clock className="w-4 h-4 text-red-400 animate-pulse"/>
+                <span>{formatTime(timeLeft)}</span>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center space-x-4">
-             {isInterviewActive && (
-               <div className="flex items-center space-x-3 px-6 py-2.5 bg-slate-900 text-white rounded-2xl font-black tabular-nums shadow-lg shadow-black/10">
-                 <Clock className="w-4 h-4 text-primary-400"/>
-                 <span>{formatTime(timeLeft)}</span>
+            {/* Main Views Layout */}
+            <div className="absolute inset-0 z-0 transition-all duration-700">
+               {/* Large View */}
+               {activeSpeaker === 'ai' ? (
+                  <motion.div 
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     className="w-full h-full relative bg-slate-800"
+                  >
+                     <img src={AI_IMAGE} alt="AI" className="w-full h-full object-cover" />
+                     <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80"></div>
+                  </motion.div>
+               ) : (
+                  <motion.div 
+                     initial={{ opacity: 0 }}
+                     animate={{ opacity: 1 }}
+                     className="w-full h-full relative bg-black"
+                  >
+                     <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        muted 
+                        playsInline
+                        className="w-full h-full object-cover transform -scale-x-100"
+                     />
+                     <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/80"></div>
+                  </motion.div>
+               )}
+            </div>
+
+            {/* Picture-in-Picture (PiP) */}
+            <motion.div 
+               layout
+               className="absolute top-24 right-6 lg:right-8 w-32 lg:w-48 aspect-[3/4] lg:aspect-video rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl z-40 bg-slate-800 transition-all duration-500"
+            >
+               {activeSpeaker === 'ai' ? (
+                  <video 
+                     ref={pipVideoRef} 
+                     autoPlay 
+                     muted 
+                     playsInline
+                     className="w-full h-full object-cover transform -scale-x-100"
+                  />
+               ) : (
+                  <img src={AI_IMAGE} alt="AI PiP" className="w-full h-full object-cover" />
+               )}
+            </motion.div>
+
+            {/* Chat Transcript Panel (Side Overlay) */}
+            <AnimatePresence>
+               {showChat && (
+                  <motion.div 
+                     initial={{ opacity: 0, x: -20 }}
+                     animate={{ opacity: 1, x: 0 }}
+                     exit={{ opacity: 0, x: -20 }}
+                     className="absolute left-4 lg:left-8 top-24 bottom-32 w-72 lg:w-96 flex flex-col z-30 pointer-events-none"
+                  >
+                     <div className="flex-1 overflow-y-auto space-y-4 pr-2 pointer-events-auto scrollbar-hide" style={{ msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
+                        {messages.map((msg) => (
+                           <motion.div 
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              key={msg.id} 
+                              className={`flex ${msg.type === 'ai' ? 'justify-start' : 'justify-end'}`}
+                           >
+                              <div className={`p-4 rounded-2xl max-w-[85%] text-sm shadow-lg backdrop-blur-md ${
+                                 msg.type === 'ai' 
+                                 ? 'bg-black/60 text-white border border-white/10 rounded-tl-sm' 
+                                 : 'bg-primary-600/80 text-white border border-primary-500/50 rounded-tr-sm'
+                              }`}>
+                                 {msg.text}
+                              </div>
+                           </motion.div>
+                        ))}
+                        <div ref={chatEndRef} />
+                     </div>
+                  </motion.div>
+               )}
+            </AnimatePresence>
+
+            {/* Bottom Call Controls */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center space-x-6 z-50">
+               <button 
+                  onClick={() => setShowChat(!showChat)}
+                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-all backdrop-blur-md border ${
+                     showChat ? 'bg-white text-slate-900 border-white shadow-lg shadow-white/20' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'
+                  }`}
+               >
+                  <MessageSquare className="w-6 h-6" />
+               </button>
+
+               <button 
+                  onClick={toggleRecording}
+                  className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl ${
+                     isRecording 
+                     ? 'bg-white text-slate-900 scale-110 animate-pulse shadow-white/30' 
+                     : 'bg-white/10 text-white border border-white/20 backdrop-blur-md hover:bg-white/20'
+                  }`}
+               >
+                  {isRecording ? <Mic className="w-8 h-8" /> : <MicOff className="w-8 h-8" />}
+               </button>
+
+               <button 
+                  onClick={endInterview}
+                  className="w-14 h-14 rounded-full flex items-center justify-center bg-red-500 text-white hover:bg-red-600 transition-all shadow-lg shadow-red-500/30"
+               >
+                  <PhoneOff className="w-6 h-6" />
+               </button>
+            </div>
+
+          </div>
+        ) : (
+          <>
+             {/* Inactive State Header */}
+             <header className="bg-white border-b border-slate-200 h-20 flex items-center justify-between px-8 shrink-0 z-10">
+               <div className="flex items-center space-x-4">
+                 <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 hover:bg-slate-100 rounded-xl">
+                   <Menu className="w-6 h-6 text-slate-600" />
+                 </button>
+                 <div className="flex items-center space-x-3">
+                   <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center">
+                      <Video className="w-5 h-5 text-primary-600" />
+                   </div>
+                   <div>
+                     <h2 className="text-lg font-bold text-slate-900 leading-none">AI Mock Session</h2>
+                     <p className="text-[11px] font-bold text-green-600 uppercase mt-1 tracking-wider">Call Interface Ready</p>
+                   </div>
+                 </div>
                </div>
-             )}
-             <button 
-              onClick={isInterviewActive ? endInterview : startInterview}
-              className={`px-6 py-2.5 rounded-2xl font-bold transition-all ${
-                isInterviewActive ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
-              }`}
-             >
-               {isInterviewActive ? "End Session" : "Start Session"}
-             </button>
-          </div>
-        </header>
+             </header>
 
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8 pb-32">
-          {!isInterviewActive && !showFeedback && (
-             <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
-                <div className="w-24 h-24 bg-primary-100 rounded-[32px] flex items-center justify-center mb-8 rotate-3">
-                   <Brain className="w-12 h-12 text-primary-600" />
-                </div>
-                <h3 className="text-2xl font-black text-slate-900 mb-4">Ready to perform?</h3>
-                <p className="text-slate-500 font-medium mb-8 leading-relaxed">
-                  The AI will ask technical and behavioral questions. Your answers will be analyzed for quality, tone, and brevity.
-                </p>
-                <div className="grid grid-cols-2 gap-4 w-full">
-                   <div className="p-4 bg-white rounded-2xl border border-slate-200 text-left">
-                      <Clock className="w-5 h-5 text-blue-500 mb-2"/>
-                      <p className="text-xs font-bold text-slate-400 uppercase">Duration</p>
-                      <p className="font-bold text-slate-900">15 Minutes</p>
-                   </div>
-                   <div className="p-4 bg-white rounded-2xl border border-slate-200 text-left">
-                      <Mic className="w-5 h-5 text-purple-500 mb-2"/>
-                      <p className="text-xs font-bold text-slate-400 uppercase">Input</p>
-                      <p className="font-bold text-slate-900">Voice/Text</p>
-                   </div>
-                </div>
-             </div>
-          )}
-
-          <AnimatePresence>
-            {(isInterviewActive || messages.length > 1) && !showFeedback && messages.map((msg) => (
-              <motion.div 
-                key={msg.id}
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className={`flex ${msg.type === 'ai' ? 'justify-start' : 'justify-end'}`}
-              >
-                <div className={`max-w-[80%] flex items-end space-x-3 ${msg.type === 'ai' ? 'flex-row' : 'flex-row-reverse space-x-reverse'}`}>
-                  {msg.type === 'ai' && (
-                    <div className="w-8 h-8 rounded-lg bg-primary-600 flex items-center justify-center shrink-0 mb-1">
-                      <Brain className="w-5 h-5 text-white" />
-                    </div>
-                  )}
-                  <div className={`p-5 rounded-[28px] font-medium leading-relaxed shadow-sm ${
-                    msg.type === 'ai' 
-                    ? 'bg-white border border-slate-200 text-slate-800 rounded-bl-none' 
-                    : 'bg-primary-600 text-white rounded-br-none shadow-xl shadow-primary-600/10'
-                  }`}>
-                    {msg.text}
+             {/* Inactive State Body */}
+             <div className="flex-1 overflow-y-auto p-4 lg:p-8 space-y-8 bg-slate-50">
+               {!showFeedback && (
+                  <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
+                     <div className="w-24 h-24 bg-primary-100 rounded-full flex items-center justify-center mb-8 shadow-inner relative">
+                        <div className="absolute inset-0 rounded-full border-4 border-primary-200 animate-ping opacity-20"></div>
+                        <Video className="w-10 h-10 text-primary-600" />
+                     </div>
+                     <h3 className="text-3xl font-black text-slate-900 mb-4">Start Video Call</h3>
+                     <p className="text-slate-500 font-medium mb-8 leading-relaxed">
+                       You are about to start a live video call with Sarah, your AI Recruiter. Ensure your camera and microphone are working.
+                     </p>
+                     
+                     <button 
+                        onClick={startInterview}
+                        className="px-8 py-4 rounded-full font-bold text-lg transition-all bg-primary-600 text-white shadow-xl shadow-primary-600/30 hover:bg-primary-700 hover:scale-105 flex items-center space-x-3"
+                     >
+                        <Video className="w-6 h-6" />
+                        <span>Join Call Now</span>
+                     </button>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          <div ref={chatEndRef} />
-        </div>
+               )}
+             </div>
+          </>
+        )}
 
         {/* Feedback Overlay */}
         <AnimatePresence>
@@ -226,7 +405,7 @@ const MockInterview = () => {
             <motion.div 
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="absolute inset-4 z-40 bg-white shadow-2xl rounded-[40px] border border-slate-200 p-8 lg:p-12 overflow-y-auto"
+              className="absolute inset-4 z-50 bg-white shadow-2xl rounded-[40px] border border-slate-200 p-8 lg:p-12 overflow-y-auto"
             >
               <div className="max-w-4xl mx-auto">
                 <div className="text-center mb-12">
@@ -272,15 +451,18 @@ const MockInterview = () => {
                    </div>
                 </div>
 
-                <div className="mt-12 flex justify-center space-x-4">
+                <div className="mt-12 flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
                    <button 
-                    onClick={() => { setShowFeedback(false); setMessages([{ id: 1, type: 'ai', text: "Ready for another round?" }]); }}
-                    className="flex items-center space-x-2 px-8 py-4 bg-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-300 transition-all"
+                    onClick={() => { setShowFeedback(false); setMessages([]); }}
+                    className="w-full sm:w-auto flex items-center justify-center space-x-2 px-8 py-4 bg-slate-200 text-slate-700 rounded-2xl font-bold hover:bg-slate-300 transition-all"
                    >
                      <RotateCcw className="w-5 h-5"/>
                      <span>Restart Interview</span>
                    </button>
-                   <button className="px-8 py-4 bg-primary-600 text-white rounded-2xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-600/20 transition-all">
+                   <button 
+                     onClick={() => { setShowFeedback(false); }}
+                     className="w-full sm:w-auto px-8 py-4 bg-primary-600 text-white rounded-2xl font-bold hover:bg-primary-700 shadow-lg shadow-primary-600/20 transition-all"
+                   >
                      Go to Dashboard
                    </button>
                 </div>
@@ -289,39 +471,6 @@ const MockInterview = () => {
           )}
         </AnimatePresence>
 
-        {/* Input area */}
-        {isInterviewActive && (
-          <div className="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-6">
-            <div className="max-w-4xl mx-auto relative flex items-center space-x-4">
-              <button 
-                onClick={toggleRecording}
-                className={`p-4 rounded-2xl transition-all shadow-lg ${
-                  isRecording 
-                  ? 'bg-red-500 text-white animate-pulse shadow-red-500/30' 
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                }`}
-              >
-                {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-              </button>
-              <div className="flex-1 relative">
-                <input 
-                  type="text" 
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                  placeholder={isRecording ? "Listening..." : "Type your answer here..."}
-                  className="w-full bg-white border border-slate-200 rounded-3xl pl-6 pr-14 py-4 focus:ring-2 focus:ring-primary-500/20 outline-none font-medium shadow-sm"
-                />
-                <button 
-                  onClick={handleSendMessage}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 transition-all"
-                >
-                  <Send className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
     </div>
   );
@@ -347,7 +496,7 @@ const ScoreCard = ({ label, score, total, color }: any) => (
         {score}
       </div>
     </div>
-    <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest">{label}</h4>
+    <h4 className="font-bold text-slate-500 uppercase text-[10px] tracking-widest text-center">{label}</h4>
   </div>
 );
 
